@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-body antialiased selection:bg-primary selection:text-on-primary min-h-screen;
+    font-family: 'Inter', sans-serif;
+  }
+  h1, h2, h3, .font-headline {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+}
+
+.material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.glass-panel {
+    background: rgba(23, 26, 31, 0.7);
+    backdrop-filter: blur(16px);
+}
+
+.cyber-glow {
+    box-shadow: 0 0 20px rgba(202, 253, 0, 0.15);
+}
+
+.map-overlay {
+    background: radial-gradient(circle at center, transparent 0%, #0c0e12 80%);
+}
+
+.map-container .leaflet-container {
+  @apply w-full h-full rounded-2xl;
+  background-color: #0c0e12 !important; 
+}
+
+.highlight-glow {
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.pulse-marker {
+  animation: marker-pulse 2s infinite;
+}
+
+@keyframes marker-pulse {
+  0% { r: 5; opacity: 1; }
+  100% { r: 15; opacity: 0; }
+}

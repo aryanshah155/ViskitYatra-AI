@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  db:
+    build:
+      context: ./db
+    container_name: viksityatra_db
+    environment:
+      POSTGRES_USER: viksityatra
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: viksityatra_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: always
+
+  # Initializer service to preprocess the map file for 3 modes
+  osrm_init:
+    image: osrm/osrm-backend
+    container_name: viksityatra_osrm_init
+    volumes:
+      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+    command: >
+      /bin/sh -c "
+      for profile in car foot bicycle; do
+        if [ ! -f /data/$$profile/western-zone-260313.osrm.mldgr ]; then
+          echo \"Repairing/Processing $$profile profile (Data block missing)...\" &&
+          rm -rf /data/$$profile &&
+          mkdir -p /data/$$profile &&
+          osrm-extract -p /opt/$$profile.lua /data/western-zone-260313.osm.pbf &&
+          osrm-partition /data/western-zone-260313.osrm &&
+          osrm-customize /data/western-zone-260313.osrm &&
+          mv /data/western-zone-260313.osrm* /data/$$profile/ ;
+        else
+          echo \"$$profile profile integrity verified.\";
+        fi
+      done"
+
+  osrm_car:
+    image: osrm/osrm-backend
+    container_name: viksityatra_osrm_car
+    depends_on:
+      osrm_init:
+        condition: service_completed_successfully
+    volumes:
+      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+    ports:
+      - "5000:5000"
+    command: osrm-routed --algorithm mld /data/car/western-zone-260313.osrm
+    restart: always
+
+  osrm_foot:
+    image: osrm/osrm-backend
+    container_name: viksityatra_osrm_foot
+    depends_on:
+      osrm_init:
+        condition: service_completed_successfully
+    volumes:
+      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+    ports:
+      - "5001:5000"
+    command: osrm-routed --algorithm mld /data/foot/western-zone-260313.osrm
+    restart: always
+
+  osrm_bike:
+    image: osrm/osrm-backend
+    container_name: viksityatra_osrm_bike
+    depends_on:
+      osrm_init:
+        condition: service_completed_successfully
+    volumes:
+      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+    ports:
+      - "5002:5000"
+    command: osrm-routed --algorithm mld /data/bicycle/western-zone-260313.osrm
+    restart: always
+
+  osm_importer:
+    build:
+      context: ./db
+    container_name: viksityatra_osm_importer
+    depends_on:
+      - db
+    volumes:
+      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+    environment:
+      - PGPASSWORD=password
+    command: >
+      sh -c "osm2pgsql --create --database viksityatra_db --username viksityatra --host db --port 5432 --latlong /data/western-zone-260313.osm.pbf"
+
+  ml_service:
+    build:
+      context: ./ml_service
+    container_name: viksityatra_ml
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+    container_name: viksityatra_backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - OSRM_CAR_URL=http://osrm_car:5000
+      - OSRM_FOOT_URL=http://osrm_foot:5000
+      - OSRM_BIKE_URL=http://osrm_bike:5000
+    depends_on:
+      - db
+      - ml_service
+      - osrm_car
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: viksityatra_frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:3000
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  db_data:
