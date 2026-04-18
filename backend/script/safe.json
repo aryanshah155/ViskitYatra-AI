@@ -1,0 +1,228 @@
+{
+    "city": "Mumbai",
+    "version": "1.1",
+    "generated_for": "Smart Route Safety System",
+    "blackspots": [
+        {
+            "id": 1,
+            "location_name": "Kalanagar Junction",
+            "area": "Bandra East",
+            "lat": 19.0607,
+            "lng": 72.8515,
+            "risk_score": 9.8,
+            "severity": "Critical",
+            "accident_types": [
+                "Rear-end",
+                "Pedestrian",
+                "Signal Jump"
+            ],
+            "peak_hours": [
+                "21:00-23:00",
+                "08:00-10:00"
+            ],
+            "road_type": "Highway Intersection",
+            "nearby_landmark": "BKC Connector",
+            "suggested_action": "Avoid at peak hours, reroute via Bandra Kurla Complex Road"
+        },
+        {
+            "id": 2,
+            "location_name": "Baiganwadi Signal",
+            "area": "Deonar",
+            "lat": 19.0561,
+            "lng": 72.9272,
+            "risk_score": 9.5,
+            "severity": "Critical",
+            "accident_types": [
+                "Heavy Vehicle",
+                "Hit and Run"
+            ],
+            "peak_hours": [
+                "22:00-02:00"
+            ],
+            "road_type": "Urban Junction",
+            "nearby_landmark": "Deonar Dumping Ground",
+            "suggested_action": "Use Mankhurd bypass"
+        },
+        {
+            "id": 3,
+            "location_name": "WEH & Santacruz Junction",
+            "area": "Santacruz East",
+            "lat": 19.0837,
+            "lng": 72.8541,
+            "risk_score": 8.7,
+            "severity": "High",
+            "accident_types": [
+                "Overspeed",
+                "Lane Merge"
+            ],
+            "peak_hours": [
+                "18:00-22:00"
+            ],
+            "road_type": "Highway Merge",
+            "nearby_landmark": "Domestic Airport Road",
+            "suggested_action": "Reduce speed and use service lane"
+        },
+        {
+            "id": 4,
+            "location_name": "Mahim Causeway Junction",
+            "area": "Mahim",
+            "lat": 19.0435,
+            "lng": 72.8402,
+            "risk_score": 9.2,
+            "severity": "Critical",
+            "accident_types": [
+                "Waterlogging",
+                "Night Crash"
+            ],
+            "peak_hours": [
+                "21:00-01:00"
+            ],
+            "road_type": "Coastal Road",
+            "nearby_landmark": "Bandra-Worli Sea Link Entry",
+            "suggested_action": "Avoid during monsoon nights"
+        },
+        {
+            "id": 5,
+            "location_name": "Sion-Panvel Highway Junction",
+            "area": "Mankhurd",
+            "lat": 19.0463,
+            "lng": 72.9331,
+            "risk_score": 9.9,
+            "severity": "Extreme",
+            "accident_types": [
+                "Truck Collision",
+                "Motorcyclist"
+            ],
+            "peak_hours": [
+                "23:00-03:00"
+            ],
+            "road_type": "Highway",
+            "nearby_landmark": "Chembur Flyover",
+            "suggested_action": "Use Eastern Freeway"
+        },
+        {
+            "id": 6,
+            "location_name": "Amar Mahal Junction",
+            "area": "Ghatkopar",
+            "lat": 19.0722,
+            "lng": 72.9015,
+            "risk_score": 8.9,
+            "severity": "High",
+            "accident_types": [
+                "Signal Violation"
+            ],
+            "peak_hours": [
+                "19:00-23:00"
+            ],
+            "road_type": "Busy Intersection",
+            "nearby_landmark": "Tilak Nagar",
+            "suggested_action": "Wait full signal cycle"
+        },
+        {
+            "id": 7,
+            "location_name": "Andheri Subway Exit",
+            "area": "Andheri East",
+            "lat": 19.1197,
+            "lng": 72.8464,
+            "risk_score": 8.3,
+            "severity": "High",
+            "accident_types": [
+                "Flood Risk",
+                "Visibility"
+            ],
+            "peak_hours": [
+                "20:00-00:00"
+            ],
+            "road_type": "Subway",
+            "nearby_landmark": "Andheri Station",
+            "suggested_action": "Avoid in rain"
+        },
+        {
+            "id": 8,
+            "location_name": "JVLR & EEH Junction",
+            "area": "Kanjurmarg",
+            "lat": 19.1245,
+            "lng": 72.9421,
+            "risk_score": 8.5,
+            "severity": "High",
+            "accident_types": [
+                "Lane Merge",
+                "Truck"
+            ],
+            "peak_hours": [
+                "18:00-22:00"
+            ],
+            "road_type": "Highway Intersection",
+            "nearby_landmark": "Powai Lake Road",
+            "suggested_action": "Use alternate via Powai"
+        },
+        {
+            "id": 9,
+            "location_name": "Haji Ali Junction",
+            "area": "Worli",
+            "lat": 18.9781,
+            "lng": 72.8087,
+            "risk_score": 8.8,
+            "severity": "High",
+            "accident_types": [
+                "Tourist Traffic",
+                "Pedestrian"
+            ],
+            "peak_hours": [
+                "17:00-21:00"
+            ],
+            "road_type": "Urban Intersection",
+            "nearby_landmark": "Haji Ali Dargah",
+            "suggested_action": "Avoid evening hours"
+        },
+        {
+            "id": 10,
+            "location_name": "Dadar TT Circle",
+            "area": "Dadar East",
+            "lat": 19.0178,
+            "lng": 72.8478,
+            "risk_score": 8.4,
+            "severity": "High",
+            "accident_types": [
+                "Crowd",
+                "Bus Collision"
+            ],
+            "peak_hours": [
+                "08:00-11:00",
+                "18:00-21:00"
+            ],
+            "road_type": "Circle",
+            "nearby_landmark": "Dadar Station",
+            "suggested_action": "Use flyover"
+        }
+        /* ---- CONTINUE SIMILAR STRUCTURE ---- */
+    ],
+    "road_segments": [
+        {
+            "road": "Western Express Highway",
+            "lat_start": 19.0000,
+            "lng_start": 72.8200,
+            "lat_end": 19.2000,
+            "lng_end": 72.8800,
+            "risk_level": "High",
+            "main_issue": "Overspeeding",
+            "suggestion": "Enable speed alerts"
+        },
+        {
+            "road": "Eastern Express Highway",
+            "lat_start": 19.0400,
+            "lng_start": 72.8700,
+            "lat_end": 19.2000,
+            "lng_end": 72.9500,
+            "risk_level": "Medium-High",
+            "main_issue": "Heavy vehicles",
+            "suggestion": "Lane discipline alerts"
+        }
+    ],
+    "ai_features": {
+        "real_time_alerts": true,
+        "night_mode_warning": true,
+        "accident_probability_model": "based on time + location",
+        "rerouting_enabled": true
+    }
+}

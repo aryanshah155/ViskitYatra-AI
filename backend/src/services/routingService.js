@@ -6,7 +6,7 @@ const getRoute = async (coordinates, profile = 'car') => {
     if (profile === 'foot') baseUrl = process.env.OSRM_FOOT_URL || 'http://localhost:5001';
     if (profile === 'bike') baseUrl = process.env.OSRM_BIKE_URL || 'http://localhost:5002';
 
-    const response = await axios.get(`${baseUrl}/route/v1/driving/${coordinates}?overview=full&geometries=geojson`);
+    const response = await axios.get(`${baseUrl}/route/v1/driving/${coordinates}?overview=full&geometries=geojson&alternatives=3`);
     return response.data;
   } catch (error) {
     console.warn(`Soft-failure detected on OSRM profile (${profile}):`, error.message);

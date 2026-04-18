@@ -23,10 +23,10 @@ const calculateHaversineDistance = (lat1, lng1, lat2, lng2) => {
   const Δφ = (lat2 - lat1) * Math.PI / 180;
   const Δλ = (lng2 - lng1) * Math.PI / 180;
 
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c;
 };
@@ -119,26 +119,120 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
     const filePath = path.join(__dirname, '../../script/road.json');
     if (fs.existsSync(filePath)) {
       const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      constructionZones = data.filter(r => r.status && r.status.toLowerCase() !== 'complete');
+      let features = Array.isArray(data) ? data : (data.features || []);
+      constructionZones = features.filter(r => {
+        const status = r.properties?.location?.status || r.status;
+        return status && status.toLowerCase() === 'in progress';
+      }).map(f => {
+        let coords = [];
+        if (f.geometry?.type === 'LineString') coords = f.geometry.coordinates; // [[lng, lat]]
+        else if (f.geometry?.type === 'MultiLineString') coords = f.geometry.coordinates.flat();
+        else if (f.lat && f.lng) coords = [[f.lng, f.lat]];
+
+        const status = f.properties?.location?.status || f.status;
+        return { path: coords, status: status, lat: f.lat, lng: f.lng };
+      });
     }
   } catch (err) {
     console.warn('Could not load construction zones for routing penalty');
   }
 
-  const checkConstructionIntersection = (geometry) => {
-    if (!geometry || !geometry.coordinates) return 0;
-    let intersections = 0;
-    // Sample coordinates to avoid heavy loop (check every 5th point)
+  // NEW: Load blackspots for Safest Route calculation
+  let blackspots = [];
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const safePath = path.join(__dirname, '../../script/safe.json');
+    if (fs.existsSync(safePath)) {
+      const safeData = JSON.parse(fs.readFileSync(safePath, 'utf8'));
+      blackspots = safeData.blackspots || [];
+    }
+  } catch (err) {
+    console.warn('Could not load safe.json blackspots');
+  }
+
+  const getIntersectingBlackspots = (geometry) => {
+    if (!geometry || !geometry.coordinates) return [];
+    const hitBlackspots = [];
+    const seenIds = new Set();
+
     for (let i = 0; i < geometry.coordinates.length; i += 5) {
       const coord = geometry.coordinates[i];
-      for (const zone of constructionZones) {
-        // Haversine distance, if < 50 meters, it intersects
-        if (calculateHaversineDistance(coord[1], coord[0], zone.lat, zone.lng) < 50) {
-          intersections++;
+      for (const spot of blackspots) {
+        if (seenIds.has(spot.id)) continue;
+        if (calculateHaversineDistance(coord[1], coord[0], spot.lat, spot.lng) < 1000) { // 1km radius
+          hitBlackspots.push(spot);
+          seenIds.add(spot.id);
         }
       }
     }
-    return intersections;
+    return hitBlackspots;
+  };
+
+  const getIntersectingZones = (geometry) => {
+    if (!geometry || !geometry.coordinates) return [];
+    const relevantZones = [];
+    const seenIndices = new Set();
+
+    // Sample the route points every 5 steps for efficiency
+    for (let i = 0; i < geometry.coordinates.length; i += 5) {
+      const coord = geometry.coordinates[i]; // [lng, lat]
+      for (let j = 0; j < constructionZones.length; j++) {
+        if (seenIndices.has(j)) continue;
+        const zone = constructionZones[j];
+        if (!zone.path) continue;
+
+        for (const pt of zone.path) {
+          // distance < 1km (1000 meters)
+          if (calculateHaversineDistance(coord[1], coord[0], pt[1], pt[0]) < 1000) {
+            relevantZones.push(zone);
+            seenIndices.add(j);
+            break;
+          }
+        }
+      }
+    }
+    return relevantZones;
+  };
+
+  const resolveOptimalRoute = (routeData) => {
+    if (!routeData || !routeData.routes || routeData.routes.length === 0) {
+      return { duration: 3600, distance: 5000, geometry: null, intersectingZones: [], initialPathGeom: null };
+    }
+
+    // Default shortest route given by OSRM
+    const initialRoute = routeData.routes[0];
+    const initialIntersections = getIntersectingZones(initialRoute.geometry);
+
+    if (initialIntersections.length > 0) {
+      // Find an alternate route within 1km difference that avoids construction
+      const initialDistance = initialRoute.distance;
+      const validAlternates = routeData.routes.slice(1).filter(alt => {
+        return (alt.distance <= initialDistance + 1000) && (getIntersectingZones(alt.geometry).length === 0);
+      });
+
+      if (validAlternates.length > 0) {
+        // Found valid alternate, take it and append the initial route geometry to render in red
+        return {
+          ...validAlternates[0],
+          intersectingZones: [],
+          hasAlternate: true,
+          initialPathGeom: initialRoute.geometry,
+          initialDuration: initialRoute.duration,
+          initialDistance: initialRoute.distance,
+          initialIntersectingZones: initialIntersections
+        };
+      } else {
+        // No valid alternate in 1km limit, MUST take initial route through construction
+        return {
+          ...initialRoute,
+          intersectingZones: initialIntersections,
+          initialPathRed: true // Signals frontend to color it red
+        };
+      }
+    }
+
+    return { ...initialRoute, intersectingZones: [], initialPathGeom: null };
   };
 
   // Get enhanced predictions for each mode in parallel
@@ -170,10 +264,10 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
     otpService.getOTPRoute(source.lat, source.lng, destination.lat, destination.lng, 'BICYCLE')
   ]);
 
-  // Fallback geometries and metrics
-  const safeCar = carRoute?.routes?.[0] || { duration: 3600, distance: 5000, geometry: null };
-  const safeBike = bikeRoute?.routes?.[0] || { duration: 1800, distance: 5000, geometry: null };
-  const safeFoot = footRoute?.routes?.[0] || { duration: 7200, distance: 5000, geometry: null };
+  // Fallback geometries and complex logic metrics
+  const safeCar = resolveOptimalRoute(carRoute);
+  const safeBike = resolveOptimalRoute(bikeRoute);
+  const safeFoot = resolveOptimalRoute(footRoute);
 
   // Dynamic safety scoring based on time and location
   const hour = parseInt(timeOfDay.split(':')[0]);
@@ -183,23 +277,25 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
   const routes = [
     {
       type: 'Car/Cab',
-      description: carRoute ? 'Optimized road network routing' : 'Road network routing (Estimated)',
+      description: carRoute ? (safeCar.initialPathRed ? 'Construction path taken (No alt within 1km)' : (safeCar.hasAlternate ? 'Optimized detour mapping' : 'Optimized road network routing')) : 'Estimated routing',
       duration: safeCar.duration * carPrediction.traffic_multiplier + (carPrediction.estimated_delay_minutes * 60),
       distance: safeCar.distance,
-      cost: Math.max(50, Math.floor(safeCar.distance / 1000) * 15), // ₹15/km minimum ₹50
+      cost: Math.max(50, Math.floor(safeCar.distance / 1000) * 15),
       safety_score: carPrediction.safety_score,
       carbon_score: carPrediction.carbon_score,
       comfort_score: carPrediction.comfort_score,
       reliability_score: carPrediction.reliability_score,
       transfers: 0,
-      color: '#ef4444',
+      color: safeCar.initialPathRed ? '#44d0efff' : '#449cefff',
       geometry: safeCar.geometry,
       mode: 'car',
-      estimated_delay: carPrediction.estimated_delay_minutes
+      estimated_delay: carPrediction.estimated_delay_minutes,
+      initialPathGeom: safeCar.initialPathGeom,
+      initialPathRed: safeCar.initialPathRed
     },
     {
       type: 'Bike',
-      description: bikeRoute ? 'Cycle-friendly path optimization' : 'Cycle path optimization (Estimated)',
+      description: bikeRoute ? (safeBike.initialPathRed ? 'Construction path taken (No alt within 1km)' : (safeBike.hasAlternate ? 'Optimized cyclic detour' : 'Cycle-friendly optimization')) : 'Estimated routing',
       duration: safeBike.duration * bikePrediction.traffic_multiplier + (bikePrediction.estimated_delay_minutes * 60),
       distance: safeBike.distance,
       cost: 0,
@@ -208,14 +304,16 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
       comfort_score: bikePrediction.comfort_score,
       reliability_score: bikePrediction.reliability_score,
       transfers: 0,
-      color: '#fbbf24',
+      color: safeBike.initialPathRed ? '#fbbf24' : '#fbbf24',
       geometry: safeBike.geometry,
       mode: 'bike',
-      estimated_delay: bikePrediction.estimated_delay_minutes
+      estimated_delay: bikePrediction.estimated_delay_minutes,
+      initialPathGeom: safeBike.initialPathGeom,
+      initialPathRed: safeBike.initialPathRed
     },
     {
       type: 'Walk',
-      description: footRoute ? 'Pedestrian-optimized routing' : 'Pedestrian routing (Estimated)',
+      description: footRoute ? (safeFoot.initialPathRed ? 'Construction path taken (No alt within 1km)' : (safeFoot.hasAlternate ? 'Pedestrian detour bypass' : 'Pedestrian-optimized routing')) : 'Estimated routing',
       duration: safeFoot.duration * walkPrediction.traffic_multiplier + (walkPrediction.estimated_delay_minutes * 60),
       distance: safeFoot.distance,
       cost: 0,
@@ -224,10 +322,12 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
       comfort_score: walkPrediction.comfort_score,
       reliability_score: walkPrediction.reliability_score,
       transfers: 0,
-      color: '#0ea5e9',
+      color: safeFoot.initialPathRed ? '#0ea5e9' : '#0ea5e9',
       geometry: safeFoot.geometry,
       mode: 'walk',
-      estimated_delay: walkPrediction.estimated_delay_minutes
+      estimated_delay: walkPrediction.estimated_delay_minutes,
+      initialPathGeom: safeFoot.initialPathGeom,
+      initialPathRed: safeFoot.initialPathRed
     },
     {
       type: 'Train/Metro',
@@ -282,9 +382,9 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
 
   // Advanced A* scoring with multiple objectives
   const weights = {
-    time: preferences.speed === 'high' ? 3.0 : (preferences.speed === 'low' ? 0.5 : 1.0),
+    time: preferences.optimization === 'speed' ? 5.0 : (preferences.speed === 'high' ? 3.0 : 1.0),
     cost: preferences.budget === 'high' ? 2.0 : 1.0,
-    safety: preferences.safety === 'high' ? 2.5 : 1.0,
+    safety: preferences.optimization === 'safety' ? 5.0 : (preferences.safety === 'high' ? 2.5 : 1.0),
     comfort: preferences.comfort === 'high' ? 1.5 : 0.5,
     environment: preferences.green === true ? 2.0 : 0.5,
     distance: 0.3, // Small penalty for longer routes
@@ -296,36 +396,62 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
     const normalizedTime = Math.min(route.duration / 7200, 1); // Max 2 hours
     const normalizedCost = Math.min(route.cost / 500, 1); // Max ₹500
     const normalizedDistance = Math.min(route.distance / 50000, 1); // Max 50km
-    const normalizedSafety = route.safety_score / 10;
-    const normalizedComfort = route.comfort_score / 10;
-    const normalizedCarbon = route.carbon_score / 10;
-    const normalizedTransfers = Math.min(route.transfers / 3, 1); // Max 3 transfers
+    const normalizedSafety = (route.safety_score || 5) / 10;
+    const normalizedComfort = (route.comfort_score || 5) / 10;
+    const normalizedCarbon = (route.carbon_score || 1) / 10;
+    const normalizedTransfers = Math.min((route.transfers || 0) / 3, 1); // Max 3 transfers
 
     // Apply severe penalty if route intersects with construction zones
-    const intersections = checkConstructionIntersection(route.geometry);
+    const relevantZones = getIntersectingZones(route.geometry);
+    const intersections = relevantZones.length;
+
+    // Apply penalty for blackspots (from safe.json)
+    const hitBlackspots = getIntersectingBlackspots(route.geometry);
+    const blackspotCount = hitBlackspots.length;
+
+    // Attach zones and blackspots to route object
+    route.intersectingZones = route.intersectingZones || relevantZones;
+    route.blackspots = hitBlackspots;
+
     if (intersections > 0) {
-      route.safety_score = Math.max(1, route.safety_score - (intersections * 2)); // Severe safety drop
-      route.description = `[CONSTRUCTION WARNING] ${route.description}`;
+      route.safety_score = Math.max(1, (route.safety_score || 5) - (intersections * 2)); // Severe safety drop
+      if (!route.hasAlternate) {
+        route.description = `[CONSTRUCTION WARNING] ${route.description}`;
+      }
       route.cost += intersections * 20; // Increase cost metric to deter A*
     }
 
-    const constructionPenalty = intersections * 5.0; // Huge score penalty
+    if (blackspotCount > 0) {
+      route.safety_score = Math.max(1, (route.safety_score || 5) - (blackspotCount * 1.5));
+      route.description = `[SAFETY WARNING: ${hitBlackspots[0].location_name}] ${route.description}`;
+    }
 
-    // A* score: f(n) = g(n) + h(n), where h is heuristic (estimated cost to goal)
+    const constructionPenalty = intersections * 5.0;
+    const blackspotPenalty = blackspotCount * 4.0;
+
+    // A* score: f(n) = g(n) + h(n)
     route.score = (
       normalizedTime * weights.time +
       normalizedCost * weights.cost +
-      (1 - normalizedSafety) * weights.safety + // Minimize safety risk
-      (1 - normalizedComfort) * weights.comfort + // Minimize discomfort
-      normalizedCarbon * weights.environment + // Minimize carbon footprint
+      (1 - normalizedSafety) * weights.safety +
+      (1 - normalizedComfort) * weights.comfort +
+      normalizedCarbon * weights.environment +
       normalizedDistance * weights.distance +
       normalizedTransfers * weights.transfers +
-      constructionPenalty
+      constructionPenalty +
+      blackspotPenalty
     );
   });
 
   // Sort by A* score (lower is better)
   routes.sort((a, b) => a.score - b.score);
+
+  // Ensure 'Car/Cab' is always the first option in the list as per tactical priority
+  const carIndex = routes.findIndex(r => r.type === 'Car/Cab');
+  if (carIndex > 0) {
+    const carRoute = routes.splice(carIndex, 1)[0];
+    routes.unshift(carRoute);
+  }
 
   routes.forEach((route, index) => {
     route.rank = index + 1;

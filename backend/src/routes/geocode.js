@@ -1,37 +1,24 @@
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
+const geocodingService = require('../services/geocodingService');
 
 router.get('/', async (req, res) => {
   const { place } = req.query;
 
   try {
-    const response = await axios.get(
-      'https://nominatim.openstreetmap.org/search',
-      {
-        params: {
-          q: place,
-          format: 'json',
-          limit: 1
-        },
-        headers: {
-          'User-Agent': 'ViksitYatraApp'
-        }
-      }
-    );
+    const loc = await geocodingService.resolvePlaceToCoords(place);
 
-    if (!response.data.length) {
+    if (!loc) {
       return res.status(404).json({ error: 'Location not found' });
     }
 
-    const loc = response.data[0];
-
     res.json({
-      name: loc.display_name,
-      lat: parseFloat(loc.lat),
-      lng: parseFloat(loc.lon)
+      name: loc.name,
+      lat: loc.lat,
+      lng: loc.lng
     });
   } catch (err) {
+    console.error('Geocode API Error:', err);
     res.status(500).json({ error: 'Geocode failed' });
   }
 });

@@ -37,14 +37,42 @@ app.get('/construction-zones', (req, res) => {
       const content = fs.readFileSync(filePath, 'utf8');
       if (content) {
         const data = JSON.parse(content);
-        const activeZones = data.filter(r => r.status && r.status.toLowerCase() !== 'complete');
+        let features = [];
+        if (Array.isArray(data)) {
+          features = data;
+        } else if (data.features && Array.isArray(data.features)) {
+          features = data.features;
+        }
+
+        const activeZones = [];
+        features.forEach(f => {
+          const status = f.properties?.location?.status || f.status;
+          if (status && status.toLowerCase() === 'in progress') {
+             let coords = [];
+             if (f.geometry?.type === 'LineString') {
+                coords = f.geometry.coordinates; // [[lng, lat]]
+             } else if (f.geometry?.type === 'MultiLineString') {
+                coords = f.geometry.coordinates.flat(); // Flatten once to get [[lng, lat]]
+             } else if (f.lat && f.lng) {
+                coords = [[f.lng, f.lat]];
+             }
+
+             if (coords.length > 0) {
+               activeZones.push({
+                 status: status,
+                 path: coords
+               });
+             }
+          }
+        });
+        
         return res.json(activeZones);
       }
     }
-    res.json([]);
+    return res.json([]);
   } catch (err) {
     console.error('Error reading construction zones:', err);
-    res.json([]);
+    return res.json([]);
   }
 });
 

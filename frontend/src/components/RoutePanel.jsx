@@ -97,7 +97,7 @@ export default function RoutePanel() {
     }
   }, []);
 
-  const handleSearch = async (e, overrideContext = null) => {
+  const handleSearch = async (e, overrideContext = null, optimization = 'default') => {
     if (e) e.preventDefault();
 
     const currentOrigin = overrideContext ? overrideContext.source : origin;
@@ -354,6 +354,7 @@ export default function RoutePanel() {
           budget: 'medium',
           comfort: 'medium',
           green: false,
+          optimization: optimization,
           time: new Date().toTimeString().slice(0, 5) // Current time in HH:MM format
         }
       }, authHeaders);
@@ -436,6 +437,25 @@ export default function RoutePanel() {
                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="material-symbols-outlined text-sm">search</span>}
                  {loading ? 'Scanning Nodes...' : 'Generate Trajectory'}
               </button>
+
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <button 
+                  type="button"
+                  onClick={(e) => handleSearch(e, null, 'speed')}
+                  className="bg-primary/10 text-primary hover:bg-primary hover:text-on-primary py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-primary/20"
+                >
+                  <span className="material-symbols-outlined text-xs">bolt</span>
+                  Fastest
+                </button>
+                <button 
+                  type="button"
+                  onClick={(e) => handleSearch(e, null, 'safety')}
+                  className="bg-tertiary/10 text-tertiary hover:bg-tertiary hover:text-on-tertiary py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-tertiary/20"
+                >
+                  <span className="material-symbols-outlined text-xs">shield</span>
+                  Safest
+                </button>
+              </div>
             </form>
 
             {routeDebugPayload && (
@@ -509,9 +529,27 @@ export default function RoutePanel() {
                     <div>
                       <h4 className="font-headline font-bold text-sm text-on-surface uppercase tracking-tight">{route.type}</h4>
                       <p className="text-[9px] text-on-surface-variant opacity-60 uppercase font-mono tracking-tighter">{route.description || 'Optimized Path'}</p>
+                      
+                      {route.hasAlternate && (
+                        <div className="mt-2 space-y-1">
+                          <div className="flex items-center gap-2">
+                             <span className="w-1.5 h-1.5 rounded-full bg-error"></span>
+                             <span className="text-[10px] text-on-surface-variant uppercase font-black opacity-50">Old Path: {(route.initialDuration/60).toFixed(0)}m</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                             <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                             <span className="text-[10px] text-primary uppercase font-black">Fastest: {(route.duration/60).toFixed(0)}m</span>
+                          </div>
+                          <div className="text-[8px] bg-primary/10 text-primary w-fit px-1.5 py-0.5 rounded-sm font-black uppercase mt-1">
+                             +{( (route.distance - route.initialDistance) / 1000 ).toFixed(1)}km detour
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-col items-end">
-                       <div className="bg-primary/10 text-primary text-[10px] font-black px-2 py-0.5 rounded italic mb-1">{route.safety_score.toFixed(1)}/10 SAFE</div>
+                       <div className={`text-[10px] font-black px-2 py-0.5 rounded italic mb-1 ${route.initialPathRed ? 'bg-error/10 text-error' : 'bg-primary/10 text-primary'}`}>
+                         {route.initialPathRed ? 'UNSAFE NODE' : 'TACTICAL BYPASS'}
+                       </div>
                        <p className="text-[14px] font-black text-on-surface">{(route.duration/60).toFixed(0)}m</p>
                     </div>
                   </div>
@@ -559,10 +597,10 @@ export default function RoutePanel() {
             color: mapTheme === 'dark' 
               ? (selectedRoute.type === 'Fastest' ? '#00f3ff' : 
                  selectedRoute.type === 'Safest' ? '#bc13fe' : 
-                 selectedRoute.type === 'Eco' ? '#cafd00' : selectedRoute.color || '#ff3131')
+                 selectedRoute.type === 'Eco' ? '#cafd00' : selectedRoute.color || '#ffb703')
               : (selectedRoute.type === 'Fastest' ? '#005f73' : 
                  selectedRoute.type === 'Safest' ? '#5b21b6' : 
-                 selectedRoute.type === 'Eco' ? '#166534' : selectedRoute.color || '#991b1b')
+                 selectedRoute.type === 'Eco' ? '#166534' : selectedRoute.color || '#b45309')
           } : null} 
           userLocation={userLocation} 
         />
