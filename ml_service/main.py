@@ -3,8 +3,85 @@ from pydantic import BaseModel
 import random
 import math
 from typing import List
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import LabelEncoder
 
 app = FastAPI(title="ViksitYatra ML API")
+
+# Initialize and train ML Models on Startup
+df_size = 5000
+np.random.seed(42)
+
+# Generate synthetic dataset for training
+modes = ['car', 'bike', 'walk', 'train', 'bus']
+hours = np.random.randint(0, 24, df_size)
+distances = np.random.uniform(0.5, 50.0, df_size)
+is_weekends = np.random.choice([0, 1], df_size, p=[0.7, 0.3])
+mode_choices = np.random.choice(modes, df_size)
+
+traffic_mults = []
+safety_scores = []
+
+for h, d, w, m in zip(hours, distances, is_weekends, mode_choices):
+    is_peak = (7 <= h <= 10) or (16 <= h <= 20)
+    is_night = (h >= 22 or h <= 5)
+    
+    # Calculate target variables with realistic correlations
+    tm = 1.0
+    ss = 8.0
+    
+    if m == 'car':
+        tm = 1.8 if is_peak else (1.2 if is_night else 1.0)
+        tm += (d / 50) * 0.3
+        ss = 7.5 if is_night else (8.2 if is_peak else 8.8)
+    elif m == 'bike':
+        tm = 1.1 + (0.2 if is_peak else 0.0)
+        ss = 6.5 if is_night else (7.2 if is_peak else 7.8)
+    elif m == 'walk':
+        tm = 1.0
+        ss = 8.5 if is_night else (9.0 if is_peak else 9.5)
+    elif m == 'train':
+        tm = 1.0
+        ss = 9.5
+    elif m == 'bus':
+        tm = 1.3 if is_peak else 1.1
+        ss = 8.0
+        
+    if w:
+        tm *= 0.8
+        ss += 0.5
+        
+    # Add natural variance
+    traffic_mults.append(tm + np.random.normal(0, 0.1))
+    safety_scores.append(max(1.0, min(10.0, ss + np.random.normal(0, 0.5))))
+
+# Create dataframe
+df = pd.DataFrame({
+    'hour': hours,
+    'distance': distances,
+    'is_weekend': is_weekends,
+    'mode': mode_choices,
+    'traffic_multiplier': traffic_mults,
+    'safety_score': safety_scores
+})
+
+# Encode mode
+le_mode = LabelEncoder()
+df['mode_encoded'] = le_mode.fit_transform(df['mode'])
+
+# Train Models
+X = df[['hour', 'distance', 'is_weekend', 'mode_encoded']]
+y_traffic = df['traffic_multiplier']
+y_safety = df['safety_score']
+
+model_traffic = RandomForestRegressor(n_estimators=50, random_state=42)
+model_traffic.fit(X, y_traffic)
+
+model_safety = RandomForestRegressor(n_estimators=50, random_state=42)
+model_safety.fit(X, y_safety)
+
 
 class PathRequest(BaseModel):
     nodes: List[str]
@@ -54,95 +131,55 @@ def predict_traffic(req: PathRequest):
 @app.post("/predict-route", response_model=EnhancedPrediction)
 def predict_route(req: EnhancedRouteRequest):
     """
-    Enhanced ML prediction for route characteristics
+    Enhanced ML prediction using trained Random Forest Models
     """
     hour = int(req.time_of_day.split(":")[0])
-    minute = int(req.time_of_day.split(":")[1])
-
-    # Time-based factors
+    
+    # Feature encoding
+    try:
+        mode_encoded = le_mode.transform([req.mode.lower()])[0]
+    except ValueError:
+        mode_encoded = le_mode.transform(['car'])[0] # fallback
+        
+    X_pred = pd.DataFrame({
+        'hour': [hour],
+        'distance': [req.distance_km],
+        'is_weekend': [1 if req.is_weekend else 0],
+        'mode_encoded': [mode_encoded]
+    })
+    
+    # Predict using models
+    pred_traffic = model_traffic.predict(X_pred)[0]
+    pred_safety = model_safety.predict(X_pred)[0]
+    
+    # Static calculations for secondary scores based on model outputs & inputs
     is_peak = (7 <= hour <= 10) or (16 <= hour <= 20)
-    is_night = hour >= 22 or hour <= 5
-    is_off_peak = not (is_peak or is_night)
-
-    # Mode-specific predictions
+    
+    comfort_score = 7.0
+    carbon_score = 5.0
+    reliability_score = 8.0
+    
     if req.mode == 'car':
-        # Traffic congestion based on time and distance
-        base_traffic = 1.8 if is_peak else (1.2 if is_night else 1.0)
-        distance_factor = min(req.distance_km / 50, 1)  # Longer routes have more traffic variability
-        traffic_multiplier = base_traffic + random.uniform(-0.2, 0.4) + (distance_factor * 0.3)
-
-        safety_score = 7.5 if is_night else (8.2 if is_peak else 8.8)
-        comfort_score = 9.0
-        carbon_score = 8.5
-        reliability_score = 7.5 if is_peak else 8.5
-
+        comfort_score, carbon_score, reliability_score = 9.0, 8.5, (7.5 if is_peak else 8.5)
     elif req.mode == 'bike':
-        traffic_multiplier = 1.0 + random.uniform(0, 0.3)  # Less traffic impact
-        safety_score = 6.5 if is_night else (7.2 if is_peak else 7.8)
-        comfort_score = 6.5
-        carbon_score = 1.5
-        reliability_score = 8.0
-
+        comfort_score, carbon_score, reliability_score = 6.5, 1.5, 8.0
     elif req.mode == 'walk':
-        traffic_multiplier = 1.0  # No traffic impact
-        safety_score = 8.5 if is_night else (9.0 if is_peak else 9.5)
-        comfort_score = 7.0
-        carbon_score = 0.0
-        reliability_score = 9.0
-
+        comfort_score, carbon_score, reliability_score = 7.0, 0.0, 9.0
     elif req.mode == 'train':
-        # Trains are more reliable but can have delays
-        traffic_multiplier = 1.0  # No traffic congestion
-        safety_score = 9.5
-        comfort_score = 8.5
-        carbon_score = 2.0
-        reliability_score = 8.5 if is_peak else 9.0
-
+        comfort_score, carbon_score, reliability_score = 8.5, 2.0, (8.5 if is_peak else 9.0)
     elif req.mode == 'bus':
-        # Buses can be affected by traffic
-        traffic_multiplier = 1.3 if is_peak else 1.1
-        safety_score = 8.0
-        comfort_score = 7.0
-        carbon_score = 3.5
-        reliability_score = 7.0 if is_peak else 8.0
+        comfort_score, carbon_score, reliability_score = 7.0, 3.5, (7.0 if is_peak else 8.0)
 
-    else:
-        # Default values
-        traffic_multiplier = 1.2
-        safety_score = 8.0
-        comfort_score = 7.0
-        carbon_score = 5.0
-        reliability_score = 8.0
-
-    # Weekend adjustments
-    if req.is_weekend:
-        traffic_multiplier *= 0.8  # Less traffic on weekends
-        safety_score += 0.5
-        reliability_score += 0.5
-
-    # Distance-based adjustments
-    if req.distance_km > 30:
-        traffic_multiplier *= 1.1  # Longer routes have more variability
-        reliability_score -= 0.5
-
-    # Add some randomness to simulate real ML predictions
-    traffic_multiplier += random.uniform(-0.1, 0.1)
-    safety_score = max(1, min(10, safety_score + random.uniform(-0.5, 0.5)))
-    comfort_score = max(1, min(10, comfort_score + random.uniform(-0.5, 0.5)))
-    carbon_score = max(0, min(10, carbon_score + random.uniform(-0.2, 0.2)))
-    reliability_score = max(1, min(10, reliability_score + random.uniform(-0.5, 0.5)))
-
-    # Estimate delays based on reliability
+    # Estimate delays
     base_delay = 10 if is_peak else 5
-    estimated_delay = int(base_delay * (11 - reliability_score) / 10)
-    estimated_delay += random.randint(0, 5)  # Add some randomness
+    estimated_delay = int(base_delay * (11 - reliability_score) / 10) + np.random.randint(0, 5)
 
     return {
-        "traffic_multiplier": round(traffic_multiplier, 2),
-        "safety_score": round(safety_score, 1),
-        "comfort_score": round(comfort_score, 1),
-        "carbon_score": round(carbon_score, 1),
-        "reliability_score": round(reliability_score, 1),
+        "traffic_multiplier": round(float(pred_traffic), 2),
+        "safety_score": round(float(pred_safety), 1),
+        "comfort_score": comfort_score,
+        "carbon_score": carbon_score,
+        "reliability_score": reliability_score,
         "estimated_delay_minutes": estimated_delay
     }
 

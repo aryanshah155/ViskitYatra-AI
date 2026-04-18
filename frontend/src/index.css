@@ -41,6 +41,10 @@
   filter: drop-shadow(0 0 8px currentColor);
 }
 
+.neon-glow-red path {
+  filter: drop-shadow(0 0 6px #ff073a) drop-shadow(0 0 12px #ff073a);
+}
+
 .pulse-marker {
   animation: marker-pulse 2s infinite;
 }

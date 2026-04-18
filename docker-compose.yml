@@ -21,7 +21,7 @@ services:
     image: osrm/osrm-backend
     container_name: viksityatra_osrm_init
     volumes:
-      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+      - ../Map:/data
     command: >
       /bin/sh -c "
       for profile in car foot bicycle; do
@@ -45,7 +45,7 @@ services:
       osrm_init:
         condition: service_completed_successfully
     volumes:
-      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+      - ../Map:/data
     ports:
       - "5000:5000"
     command: osrm-routed --algorithm mld /data/car/western-zone-260313.osrm
@@ -58,7 +58,7 @@ services:
       osrm_init:
         condition: service_completed_successfully
     volumes:
-      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+      - ../Map:/data
     ports:
       - "5001:5000"
     command: osrm-routed --algorithm mld /data/foot/western-zone-260313.osrm
@@ -71,7 +71,7 @@ services:
       osrm_init:
         condition: service_completed_successfully
     volumes:
-      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+      - ../Map:/data
     ports:
       - "5002:5000"
     command: osrm-routed --algorithm mld /data/bicycle/western-zone-260313.osrm
@@ -84,7 +84,7 @@ services:
     depends_on:
       - db
     volumes:
-      - c:/Users/A/Desktop/Hackx2.0/Map:/data
+      - ../Map:/data
     environment:
       - PGPASSWORD=password
     command: >
@@ -109,6 +109,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      - DB_HOST=db
       - OSRM_CAR_URL=http://osrm_car:5000
       - OSRM_FOOT_URL=http://osrm_foot:5000
       - OSRM_BIKE_URL=http://osrm_bike:5000

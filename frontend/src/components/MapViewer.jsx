@@ -24,6 +24,14 @@ function RouteFitter({ routeCoords }) {
 
 export default function MapViewer({ points, geometry, selectedRoute, userLocation, theme = 'dark' }) {
   const [routeLine, setRouteLine] = useState([]);
+  const [constructionZones, setConstructionZones] = useState([]);
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/construction-zones`)
+      .then(res => res.json())
+      .then(data => setConstructionZones(data))
+      .catch(err => console.error('Failed to load construction zones', err));
+  }, []);
 
   useEffect(() => {
     if (geometry && geometry.coordinates) {
@@ -64,6 +72,23 @@ export default function MapViewer({ points, geometry, selectedRoute, userLocatio
           pathOptions={{ color: '#cafd00', fillColor: '#cafd00', fillOpacity: 0.6, weight: 2 }} 
         />
       )}
+
+      {/* Construction Zones */}
+      {constructionZones.map((zone, idx) => (
+        <Circle 
+          key={`cz-${idx}`}
+          center={[zone.lat, zone.lng]} 
+          radius={30} 
+          pathOptions={{ color: '#ff073a', fillColor: '#ff073a', fillOpacity: 0.15, opacity: 0.4, weight: 2 }}
+          className="neon-glow-red" 
+        >
+          {zone.status && (
+            <L.Tooltip direction="top" opacity={1}>
+              <span className="text-[#ff073a] font-bold uppercase text-[10px] tracking-widest drop-shadow-md">Construction: {zone.status}</span>
+            </L.Tooltip>
+          )}
+        </Circle>
+      ))}
 
       {points && (
         <>

@@ -28,6 +28,26 @@ app.use('/chat', authMiddleware, chatRouter);
 app.use('/geocode', geocodeRouter);
 app.use('/nearby', nearbyRouter);
 
+app.get('/construction-zones', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, '../script/road.json');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      if (content) {
+        const data = JSON.parse(content);
+        const activeZones = data.filter(r => r.status && r.status.toLowerCase() !== 'complete');
+        return res.json(activeZones);
+      }
+    }
+    res.json([]);
+  } catch (err) {
+    console.error('Error reading construction zones:', err);
+    res.json([]);
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });

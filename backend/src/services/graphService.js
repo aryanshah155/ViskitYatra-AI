@@ -10,6 +10,7 @@
 
 const mlService = require('./mlService');
 const routingService = require('./routingService');
+const otpService = require('./otpService');
 const db = require('../db');
 
 /**
@@ -110,6 +111,36 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
   const distanceKm = calculateHaversineDistance(source.lat, source.lng, destination.lat, destination.lng) / 1000;
   const isWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
 
+  // Load construction zones once
+  let constructionZones = [];
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, '../../script/road.json');
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      constructionZones = data.filter(r => r.status && r.status.toLowerCase() !== 'complete');
+    }
+  } catch (err) {
+    console.warn('Could not load construction zones for routing penalty');
+  }
+
+  const checkConstructionIntersection = (geometry) => {
+    if (!geometry || !geometry.coordinates) return 0;
+    let intersections = 0;
+    // Sample coordinates to avoid heavy loop (check every 5th point)
+    for (let i = 0; i < geometry.coordinates.length; i += 5) {
+      const coord = geometry.coordinates[i];
+      for (const zone of constructionZones) {
+        // Haversine distance, if < 50 meters, it intersects
+        if (calculateHaversineDistance(coord[1], coord[0], zone.lat, zone.lng) < 50) {
+          intersections++;
+        }
+      }
+    }
+    return intersections;
+  };
+
   // Get enhanced predictions for each mode in parallel
   const [carPrediction, bikePrediction, walkPrediction, trainPrediction, busPrediction] = await Promise.all([
     mlService.predictRoute(source.name, destination.name, 'car', distanceKm, timeOfDay, isWeekend),
@@ -130,6 +161,13 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
   const [trainRoute, busRoute] = await Promise.all([
     calculateTransitRoute(source.lat, source.lng, destination.lat, destination.lng, 'train', timeOfDay),
     calculateTransitRoute(source.lat, source.lng, destination.lat, destination.lng, 'bus', timeOfDay)
+  ]);
+
+  // Fetch OpenTripPlanner Routes
+  const [otpTransitItineraries, otpWalkItineraries, otpBikeItineraries] = await Promise.all([
+    otpService.getOTPRoute(source.lat, source.lng, destination.lat, destination.lng, 'TRANSIT,WALK'),
+    otpService.getOTPRoute(source.lat, source.lng, destination.lat, destination.lng, 'WALK'),
+    otpService.getOTPRoute(source.lat, source.lng, destination.lat, destination.lng, 'BICYCLE')
   ]);
 
   // Fallback geometries and metrics
@@ -227,6 +265,21 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
     }
   ];
 
+  if (otpTransitItineraries && otpTransitItineraries.length > 0) {
+    const otpTransitRoute = otpService.formulateOTPRoute(otpTransitItineraries[0], 'OTP Transit', '#ff00ff');
+    if (otpTransitRoute) routes.push(otpTransitRoute);
+  }
+
+  if (otpWalkItineraries && otpWalkItineraries.length > 0) {
+    const otpWalkRoute = otpService.formulateOTPRoute(otpWalkItineraries[0], 'OTP Walk', '#00ff00');
+    if (otpWalkRoute) routes.push(otpWalkRoute);
+  }
+
+  if (otpBikeItineraries && otpBikeItineraries.length > 0) {
+    const otpBikeRoute = otpService.formulateOTPRoute(otpBikeItineraries[0], 'OTP Bike', '#ff8800');
+    if (otpBikeRoute) routes.push(otpBikeRoute);
+  }
+
   // Advanced A* scoring with multiple objectives
   const weights = {
     time: preferences.speed === 'high' ? 3.0 : (preferences.speed === 'low' ? 0.5 : 1.0),
@@ -248,6 +301,16 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
     const normalizedCarbon = route.carbon_score / 10;
     const normalizedTransfers = Math.min(route.transfers / 3, 1); // Max 3 transfers
 
+    // Apply severe penalty if route intersects with construction zones
+    const intersections = checkConstructionIntersection(route.geometry);
+    if (intersections > 0) {
+      route.safety_score = Math.max(1, route.safety_score - (intersections * 2)); // Severe safety drop
+      route.description = `[CONSTRUCTION WARNING] ${route.description}`;
+      route.cost += intersections * 20; // Increase cost metric to deter A*
+    }
+
+    const constructionPenalty = intersections * 5.0; // Huge score penalty
+
     // A* score: f(n) = g(n) + h(n), where h is heuristic (estimated cost to goal)
     route.score = (
       normalizedTime * weights.time +
@@ -256,7 +319,8 @@ const calculateMultiModalRoute = async (source, destination, preferences) => {
       (1 - normalizedComfort) * weights.comfort + // Minimize discomfort
       normalizedCarbon * weights.environment + // Minimize carbon footprint
       normalizedDistance * weights.distance +
-      normalizedTransfers * weights.transfers
+      normalizedTransfers * weights.transfers +
+      constructionPenalty
     );
   });
 

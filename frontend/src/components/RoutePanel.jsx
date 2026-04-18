@@ -458,22 +458,35 @@ export default function RoutePanel() {
             )}
 
             <div className="flex gap-1 overflow-x-auto no-scrollbar pb-2 pt-2">
-              {travelModes.map((mode) => (
+              {travelModes.map((mode) => {
+                const foundRoute = routeOptions.find(r => normalizeRouteMode(r.type) === mode.id);
+                // Check if walking distance > 10km (10000 meters)
+                const isWalkTooFar = mode.id === 'walk' && foundRoute && foundRoute.distance > 10000;
+                
+                return (
                 <button 
                   key={mode.id} 
                   onClick={() => {
-                    const found = routeOptions.find(r => normalizeRouteMode(r.type) === mode.id);
-                    if (found) {
-                      setSelectedRoute(found);
-                      setRouteGeometry(found.geometry || routeGeometry);
+                    if (isWalkTooFar) {
+                      toast.error('Walking distance exceeds 10 km. Not recommended.');
+                      return;
+                    }
+                    if (foundRoute) {
+                      setSelectedRoute(foundRoute);
+                      setRouteGeometry(foundRoute.geometry || routeGeometry);
                     }
                   }}
-                  className={`flex-none flex flex-col items-center justify-center w-16 h-14 rounded-xl transition-all border ${normalizeRouteMode(selectedRoute?.type) === mode.id ? 'bg-primary text-on-primary border-primary shadow-lg' : 'bg-surface-container-highest text-on-surface-variant border-outline-variant/10 hover:border-primary/20'}`}
+                  disabled={isWalkTooFar}
+                  className={`flex-none flex flex-col items-center justify-center w-16 h-14 rounded-xl transition-all border 
+                    ${isWalkTooFar ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'} 
+                    ${normalizeRouteMode(selectedRoute?.type) === mode.id && !isWalkTooFar 
+                      ? 'bg-primary text-on-primary border-primary shadow-lg' 
+                      : 'bg-surface-container-highest text-on-surface-variant border-outline-variant/10 hover:border-primary/20'}`}
                 >
                   <span className="material-symbols-outlined text-xl">{mode.icon}</span>
                   <span className="text-[8px] font-headline font-black uppercase tracking-tighter mt-1">{mode.label}</span>
                 </button>
-              ))}
+              )})}
             </div>
           </div>
 
